@@ -26,6 +26,9 @@ Little FACEIT chrome extension that help you auto accept match when there's one 
 ![](http://puu.sh/rQhyZ/2dfdd0dfa3.png)
 
 ---------------------------------------------------------------------------------
+31/01/2017
+v3.5.8 - Added extra user info to in-queue list
+
 21/10/2016
 v3.2.1 - Updated placement for country icon, premades indication
 

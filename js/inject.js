@@ -213,6 +213,7 @@ var faceitHelper = {
 
 		    $.each(joined_players, function(key, value) {
 
+// https://api.faceit.com/stats/api/v1/stats/users/cb619d11-b436-4896-b5e3-7b7d1a6752f2/games/csgo
 		        var joined_player = joined_players[key];
 		        userGetQueries.push(
 		            $.get('https://api.faceit.com/api/users/' + joined_player.guid, function(e) {
@@ -237,7 +238,6 @@ var faceitHelper = {
 		                playerNameinQueue.push(e.payload.nickname);
 		            }, "json")
 		        );
-
 		    });
 
 
@@ -250,9 +250,14 @@ var faceitHelper = {
 
 
 		        $('.player_list-loading').remove();
+				var lastFaction = -1;
 		        for (var i = 0; i < fetchedValue.length; i++) {
+		        	var factionChange = (lastFaction != -1 && lastFaction != fetchedValue[i].faction);
+					lastFaction = fetchedValue[i].faction;
 		            var teamborderColor = fetchedValue[i].faction == 1 ? "3px solid rgb(153, 92, 92)" : "3px solid rgb(92, 92, 153)";
-		            var list = $('<li/>').addClass("text-left").css("border-right", teamborderColor)
+
+
+		            var list = $('<li/>').addClass("text-left")
 		                .append($('<i/>', {
 		                    id: fetchedValue[i].guid,
 		                    class: "icon-ic_state_checkmark_48px icon-md"
@@ -273,22 +278,118 @@ var faceitHelper = {
 								href: 'https://www.faceit.com/' + window.location.pathname.split('/')[1] +'/players/' + fetchedValue[i].nickname
 							})
 							.css("font-weight", "bold")
-						)
-		                .append(' - ELO: ' + fetchedValue[i].elo + ' - ' + fetchedValue[i].type + '</li>')
-		                .append(' - [' + fetchedValue[i].accountAge + ' days ago]</li>');
-		            if (fetchedValue[i].isLeader) {
-		                list.append($('<i/>', {
-		                    class: "icon-captain icon-ic_play_captain_48px"
-		                }));
-		            }
+						);
+
+						if (fetchedValue[i].isLeader) {
+							list.append($('<i/>', {
+								class: "icon-captain icon-ic_play_captain_48px"
+							}));
+						}
+
+		                list.append('('+fetchedValue[i].type.substr(0,1) +') - ELO: ' + fetchedValue[i].elo)
+		                //.append(' - [' + fetchedValue[i].accountAge + ' days ago]')
+		                .append(' [ <span id="ustats' + fetchedValue[i].guid +'"></span> ] <p style="text-align: right; width: 100% display: block; font-size: 10px;">' +
+							'<strong>AVG FRAGS:</strong> ' +
+							'<span id="u' + fetchedValue[i].guid +'6frags"></span> in <span id="u' + fetchedValue[i].guid +'6matches"></span>M (Last 6H) ' +
+							'/ <span id="u' + fetchedValue[i].guid +'24frags"></span> in <span id="u' + fetchedValue[i].guid +'24matches"></span>M (Last 24H) ' +
+							'/ <span id="u' + fetchedValue[i].guid +'7frags"></span> in <span id="u' + fetchedValue[i].guid +'7matches"></span>M (Last 7D)</p></li>');
+
 		            if (fetchedValue[i].teamid) { // This might solve the solo having party icon. Not sure bc faceit is funny
 		                list.css("border-left", "2px solid #" + fetchedValue[i].teamid.substring(0, 6));
 		            } else {
 		            	list.css("border-left", "2px solid #2D2D2D");
 		            }
+		            // Add a split line
+					if (factionChange) {
+						list.css('border-top', '2px solid #4b4e4e');
+						list.css('padding-top', '5px')
+					}
+
 		            $('#player_list').append(list);
 		            // Temp party indicator - uses first 6 chars of team id as hex colour
-		           
+
+		            // add losses/wins
+		            // TODO: we should cache this request to use in later room
+		            // https://api.faceit.com/stats/api/v1/stats/time/users/9b1c315f-fcf1-4d7f-ae68-04323068fa63/games/csgo?page=0&size=30
+					$.get("https://api.faceit.com/stats/api/v1/stats/time/users/" + fetchedValue[i].guid + "/games/"+faceitHelper.globalstate.user.currentGame+"?size=20", function(userMatchData) {
+						//no stats recoreded
+						if(userMatchData.length == 0) {
+							return;
+						}
+						var now = parseInt(new Date().getTime() / 1000);
+						var wins = '';
+						var playerId = userMatchData[0]['_id'].playerId;
+						var matches = {
+							'6': {
+								frags: 0,
+								kr: 0,
+								matches: 0,
+								sumFrags: 0,
+								sumKR: 0
+							},
+							'24': {
+								frags: 0,
+								kr: 0,
+								matches: 0,
+								sumFrags: 0,
+								sumKR: 0
+							},
+							'7': {
+								frags: 0,
+								kr: 0,
+								matches: 0,
+								sumFrags: 0,
+								sumKR: 0
+							}
+						};
+
+						for(var m = 0; m<userMatchData.length; m++){
+							var updateIndex = 0;
+							console.log(userMatchData[m].date, (now - 3600 * 6));
+							var date = userMatchData[m].date / 1000;
+							// Last 6h
+							if ((now - 3600 * 6) < date) {
+								updateIndex = '6';
+							}
+							else if ((now - 3600 * 24) < date) {
+								updateIndex = '24';
+							}
+							else if ((now - 3600 * 24 * 7) < date) {
+								updateIndex = '7';
+							}
+
+							// Update
+							if (updateIndex) {
+								matches[updateIndex].sumFrags += parseInt(userMatchData[m].i6);
+								matches[updateIndex].sumKR += parseInt(userMatchData[m].c3);
+								matches[updateIndex].matches++;
+							}
+
+							//find winner of game
+							if (m < 10) {
+								if(userMatchData[m].i2 === userMatchData[m].teamId) {
+									wins = '<span style="color: green;">W</span>' + wins;
+								} else {
+									wins = '<span style="color: red;">L</span>' + wins;
+								}
+							}
+
+						}
+
+						// Update DOM
+						$("#ustats" + playerId).html(wins);
+						for (var i in matches) {
+							if (matches[i].matches) {
+								matches[i].frags = parseInt(matches[i].sumFrags / matches[i].matches);
+								matches[i].kr = parseInt(matches[i].sumKR / matches[i].matches);
+							}
+							$('#u' + playerId+ i +'frags').text(matches[i].frags);
+							$('#u' + playerId+ i +'matches').text(matches[i].matches);
+						}
+
+
+					}, "json");
+
 
 		        }
 		        faceitHelper.timerCheckAcceptedPlayers(faceitHelper.globalstate.user.currentState);
