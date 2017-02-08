@@ -33,6 +33,7 @@ var faceitHelper = {
 		arrayMapOrder: {},
 		BlackList: false
 	},
+	session: "",
     buttons: [
 		{
 			id: "btnPremium",
@@ -160,7 +161,7 @@ var faceitHelper = {
     	faceitHelper.sendNotification('<span class="text-info"><strong>has accepted the match for you</span></strong>');
 	},
     appendPlayerList: function() {
-		if ($('#player_list').length > 0) {
+		if ($('.' + faceitHelper.session).length > 0) {
 		    return;
 		}
 		faceitHelper.globalstate.user.currentGame = angular.element('.queue--sm').scope().gameData.name;
@@ -178,10 +179,10 @@ var faceitHelper = {
 		    return;
 		}
 
-		$('.modal-dialog__actions').append('<hr><strong class="text-center">Players in this room</strong><ul id="player_list" class="list-unstyled"></ul>');
+		$('.modal-dialog__actions').append('<hr><strong class="text-center">Players in this room</strong><ul class="list-unstyled ' + faceitHelper.session + '"></ul>');
 		
-		$('#player_list').append($('<li/>', {
-		    class: "player_list-loading"
+		$('.' + faceitHelper.session).append($('<li/>', {
+		    class: faceitHelper.session + "-loading"
 		}).append($('<h2/>', {
 		    style: "line-height: 200%",
 		    text: " Fetching players data, please wait..."
@@ -213,7 +214,6 @@ var faceitHelper = {
 
 		    $.each(joined_players, function(key, value) {
 
-// https://api.faceit.com/stats/api/v1/stats/users/cb619d11-b436-4896-b5e3-7b7d1a6752f2/games/csgo
 		        var joined_player = joined_players[key];
 		        userGetQueries.push(
 		            $.get('https://api.faceit.com/api/users/' + joined_player.guid, function(e) {
@@ -238,6 +238,7 @@ var faceitHelper = {
 		                playerNameinQueue.push(e.payload.nickname);
 		            }, "json")
 		        );
+
 		    });
 
 
@@ -249,8 +250,8 @@ var faceitHelper = {
 		        });
 
 
-		        $('.player_list-loading').remove();
-				var lastFaction = -1;
+		        $('.' + faceitHelper.session +'-loading').remove();
+                var lastFaction = -1;
 		        for (var i = 0; i < fetchedValue.length; i++) {
 		        	var factionChange = (lastFaction != -1 && lastFaction != fetchedValue[i].faction);
 					lastFaction = fetchedValue[i].faction;
@@ -299,6 +300,7 @@ var faceitHelper = {
 		            } else {
 		            	list.css("border-left", "2px solid #2D2D2D");
 		            }
+		            $('.' + faceitHelper.session).append(list);
 		            // Add a split line
 					if (factionChange) {
 						list.css('border-top', '2px solid #4b4e4e');
@@ -437,6 +439,7 @@ var faceitHelper = {
 			faceitHelper.userSettings.debugMode = !faceitHelper.userSettings.debugMode;
 			var Status = faceitHelper.userSettings.debugMode ? 'enabled' : 'disabled';
 			faceitHelper.sendNotification("Debuging mode " + Status + "!");
+			faceitHelper.debug.log("FACEIT HELPER session hash: " + faceitHelper.session);
 		});
 		setTimeout(function() { faceitHelper.updateButtons(); }, 500);
 	},
@@ -480,9 +483,11 @@ var faceitHelper = {
 			case "members_elementupdate":
 				faceitHelper.eventStage.OnTeamMemberElementUpdate();
 				break;
+			case "url":
+				faceitHelper.eventStage.OnUserRouteChange(currentState, lastState);
+				break;
 			default:
 				console.error("Unknown mode type caught on dispatchStateChange");
-				break;
 		}
 
 	},
@@ -560,7 +565,7 @@ var faceitHelper = {
 				clearInterval(timer);
 				return;
 			}
-			if($('#player_list').length <= 0 ) {
+			if($('.' + faceitHelper.session).length <= 0 ) {
 				return;
 			}
 			// Do player-checkin checks here!
@@ -896,6 +901,16 @@ var faceitHelper = {
 
 			// Begin the injection of script
 			faceitHelper.lobbyStats.injectContent();
+		},
+		OnUserRouteChange: function(newRoute, oldRoute) {
+
+			faceitHelper.debug.log("User route changed to: " + newRoute + " from " + oldRoute);
+			if(window.location.pathname.indexOf('/players/') == -1) {
+				return;
+			}
+			$('div.page-title__edit-button.ng-scope > input').remove();
+			$('div.page-title__edit-button.ng-scope').attr('onclick', 'faceitHelper.sendNotification("Please disable this extension temporary before changing profile image");');
+
 		}
 	},
     lobbyStats: {
@@ -1267,12 +1282,15 @@ document.addEventListener('FH_returnMapsPreference', function(e) {
 	if(!e.detail.arrayMapOrder) {
 		// Give some default setting
 		faceitHelper.userSettings.arrayMapOrder= "de_dust2>de_cache>de_mirage>de_nuke>de_cbble>de_inferno>de_train>de_overpass>";
+	} else {
+		faceitHelper.userSettings.arrayMapOrder = e.detail.arrayMapOrder.split(">");
 	}
-	faceitHelper.userSettings.arrayMapOrder = e.detail.arrayMapOrder.split(">");
 });
 
 angular.element(document).ready(function () {
 	faceitHelper.init();
+
+	faceitHelper.session = Math.random().toString(36).slice(2);
 
 
 	// Watch for user stage change
@@ -1287,7 +1305,6 @@ angular.element(document).ready(function () {
 			faceitHelper.dispatchStateChange(newValue, oldValue, "user");
 		}
 	);
-
 	// Watch for match state change
 	faceitHelper.$scope.$watch(
 		function () {
@@ -1312,6 +1329,18 @@ angular.element(document).ready(function () {
 		function(newValue, oldValue) {
 			setTimeout(function() {
 				faceitHelper.dispatchStateChange(newValue, oldValue, "match_actionUpdate");
+			}, 2000);
+		}
+	);
+
+	// Watch for route change
+	faceitHelper.$scope.$watch(
+		function () {
+			return window.location.pathname;
+		},
+		function(newValue, oldValue) {
+			setTimeout(function() {
+				faceitHelper.dispatchStateChange(newValue, oldValue, "url");
 			}, 2000);
 		}
 	);
